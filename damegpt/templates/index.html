@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DameGPT</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div>
+        <h1>DameGPT</h1>
+        <p>A simple ChatGPT-style interface built in damegpt.</p>
+      </div>
+    </header>
+
+    <main class="chat-panel">
+      <div id="message-list" class="messages"></div>
+
+      <form id="chat-form" class="composer">
+        <textarea id="prompt-input" placeholder="Type your message here..." rows="1"></textarea>
+        <button type="submit">Send</button>
+      </form>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
