@@ -6,32 +6,11 @@ LANGUAGE_MODEL = 'llama3.2:3b'
 MAX_ITERATIONS = 4
 
 
-# Define Tools
-def get_current_weather(location: str):
-    database = {
-        "london": "15°C, Rainy 🌧️",
-        "tokyo": "26°C, Sunny ☀️",
-        "new york": "22°C, Windy 💨"
-    }
-
-    return database.get(location.lower(), "Weather data not available for this location.")
-
-
-available_tools = {
-    'get_current_weather': get_current_weather
-}
-
-while True:
-    user_input = input("\nUser: ")
-
-    messages = []
-    iterations = 0
-
+# Define LLM Call
+def llm_call(messages, tools=[]):
     response = ollama.chat(
         model=LANGUAGE_MODEL,
-        messages=[
-            {'role': 'user', 'content': user_input}
-        ],
+        messages=messages,
         stream=True,
         tools=[{
             'type': 'function',
@@ -51,9 +30,33 @@ while True:
             },
         }]    
     )
+    return response
 
+
+# Define Tools
+def get_current_weather(location: str):
+    database = {
+        "london": "15°C, Rainy 🌧️",
+        "tokyo": "26°C, Sunny ☀️",
+        "new york": "22°C, Windy 💨"
+    }
+
+    return database.get(location.lower(), "Weather data not available for this location.")
+
+
+# Tools available to the LLM
+available_tools = {
+    'get_current_weather': get_current_weather
+}
+
+messages = []
+
+# Main ReAct Agent Loop
+while True:
+    user_input = input("\nUser: ")
     messages.append({'role': 'user', 'content': user_input})
-
+    iterations = 0
+    response = llm_call(messages)
 
     for _ in range(MAX_ITERATIONS):
         tool_calls = []
@@ -69,6 +72,7 @@ while True:
             if 'tool_calls' in message_chunk and message_chunk['tool_calls']:
                 tool_calls = message_chunk['tool_calls']
 
+        # No tool calls needed - means model should have what it needs to generate response
         if not tool_calls:
             break
 
@@ -87,31 +91,10 @@ while True:
 
                 messages.append({'role': 'tool', 'content': observation, 'name': func_name})
 
-        response = ollama.chat(
-            model=LANGUAGE_MODEL,
-            messages=messages,
-            stream=True,
-            tools=[{
-                'type': 'function',
-                'function': {
-                    'name': 'get_current_weather',
-                    'description': 'Get the current weather for a specific city location',
-                    'parameters': {
-                        'type': 'object',
-                        'properties': {
-                            'location': {
-                                'type': 'string',
-                                'description': 'The city name, e.g. London, Tokyo',
-                            },
-                        },
-                        'required': ['location'],
-                    },
-                },
-            }]    
-        )
-
+        response = llm_call(messages)
         iterations += 1
 
+    # Final Output
     for chunk in response:
         print(chunk['message']['content'], end='', flush=True)
 
