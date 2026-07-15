@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "name": "ReAct weather agent MVP",
+  "cases": [
+    {
+      "id": "weather_london",
+      "prompt": "What is the current weather in London?",
+      "expected_tool_calls": [
+        {"name": "get_current_weather", "arguments": {"location": "London"}}
+      ],
+      "expected_observation_terms": ["15°C", "Rainy"],
+      "expected_answer_terms": ["15", "rain"],
+      "forbidden_answer_terms": ["sunny", "windy"],
+      "tags": ["weather", "single-tool", "supported-city"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "weather_tokyo",
+      "prompt": "Tell me the current weather in Tokyo.",
+      "expected_tool_calls": [
+        {"name": "get_current_weather", "arguments": {"location": "Tokyo"}}
+      ],
+      "expected_observation_terms": ["26°C", "Sunny"],
+      "expected_answer_terms": ["26", "sun"],
+      "forbidden_answer_terms": ["rainy", "windy"],
+      "tags": ["weather", "single-tool", "supported-city"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "weather_new_york",
+      "prompt": "Do I need to expect wind in New York right now?",
+      "expected_tool_calls": [
+        {"name": "get_current_weather", "arguments": {"location": "New York"}}
+      ],
+      "expected_observation_terms": ["22°C", "Windy"],
+      "expected_answer_terms": ["wind"],
+      "forbidden_answer_terms": ["rainy", "sunny"],
+      "tags": ["weather", "single-tool", "supported-city"],
+      "difficulty": "easy"
+    },
+    {
+      "id": "weather_compare_london_tokyo",
+      "prompt": "Compare the current weather in London and Tokyo.",
+      "expected_tool_calls": [
+        {"name": "get_current_weather", "arguments": {"location": "London"}},
+        {"name": "get_current_weather", "arguments": {"location": "Tokyo"}}
+      ],
+      "expected_observation_terms": ["15°C", "Rainy", "26°C", "Sunny"],
+      "expected_answer_terms": ["London", "Tokyo", "15", "26"],
+      "forbidden_answer_terms": [],
+      "tags": ["weather", "multi-tool", "supported-city"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "weather_unsupported_city",
+      "prompt": "What is the current weather in Atlantis?",
+      "expected_tool_calls": [
+        {"name": "get_current_weather", "arguments": {"location": "Atlantis"}}
+      ],
+      "expected_observation_terms": ["not available"],
+      "expected_answer_terms": ["not available"],
+      "forbidden_answer_terms": ["sunny", "rainy", "windy"],
+      "tags": ["weather", "single-tool", "unsupported-city"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "weather_needs_clarification",
+      "prompt": "What is the weather right now?",
+      "expected_tool_calls": [],
+      "expected_observation_terms": [],
+      "expected_answer_terms": ["location"],
+      "forbidden_answer_terms": ["15°C", "22°C", "26°C"],
+      "tags": ["weather", "clarification", "no-tool"],
+      "difficulty": "medium"
+    },
+    {
+      "id": "no_tool_greeting",
+      "prompt": "Respond with a short friendly hello. Do not look anything up.",
+      "expected_tool_calls": [],
+      "expected_observation_terms": [],
+      "expected_answer_terms": ["hello"],
+      "forbidden_answer_terms": ["weather data"],
+      "tags": ["no-tool", "control"],
+      "difficulty": "easy"
+    }
+  ]
+}
