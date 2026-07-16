@@ -418,7 +418,7 @@ def main() -> None:
     """
 
     conversation: list[dict[str, Any]] = []
-    print("ReAct weather agent. Type 'exit' to quit.")
+
     while True:
         try:
             user_input = input("\nUser: ").strip()
