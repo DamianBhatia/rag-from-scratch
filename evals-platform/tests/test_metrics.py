@@ -1,3 +1,11 @@
+"""Unit tests for deterministic trajectory and answer metrics.
+
+The suite verifies order-insensitive tool matching, normalized argument values,
+term recall, forbidden-term detection, unexpected tools, execution success, and
+the defined no-tool/no-expectation behavior. Synthetic namespace results keep the
+tests focused on scoring rather than model execution.
+"""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -7,6 +15,8 @@ from evals_platform.models import EvalCase, ExpectedToolCall
 
 
 def result(steps, answer="", termination="final_answer"):
+    """Build the minimal object-shaped agent result required by metric tests."""
+
     return SimpleNamespace(
         steps=steps,
         final_answer=answer,
@@ -19,6 +29,8 @@ def result(steps, answer="", termination="final_answer"):
 
 
 def test_unordered_tool_calls_match_and_text_metrics_are_calculated():
+    """Equivalent calls match regardless of order, case, or outer whitespace."""
+
     case = EvalCase(
         case_id="multi",
         prompt="compare",
@@ -48,6 +60,8 @@ def test_unordered_tool_calls_match_and_text_metrics_are_calculated():
 
 
 def test_missing_extra_and_no_tool_edge_cases():
+    """Extra calls lower precision and empty expectations retain defined values."""
+
     expected = EvalCase(
         case_id="one",
         prompt="test",

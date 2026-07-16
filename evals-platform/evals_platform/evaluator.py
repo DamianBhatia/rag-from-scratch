@@ -1,4 +1,16 @@
-"""Single and batch orchestration for ReAct agent evaluations."""
+"""Single- and batch-run orchestration for ReAct agent evaluations.
+
+``Evaluator`` is the application-service boundary between UI/CLI callers and the
+agent, metrics, judge, and persistence layers. For every case it captures the
+agent trajectory, computes deterministic metrics, optionally requests an LLM
+assessment, maps agent outcomes to evaluation statuses, and saves an independent
+result. A failure in one case is isolated so later cases can still run.
+
+Run-level records are created before execution and finalized as ``completed``,
+``partial``, or ``failed`` based on their collected case outcomes. Progress is
+reported through plain dictionary events so the service has no Streamlit
+dependency.
+"""
 
 from __future__ import annotations
 
@@ -16,12 +28,22 @@ ProgressCallback = Callable[[dict[str, Any]], None]
 
 
 class Evaluator:
+    """Coordinate agent execution, scoring, optional judging, and persistence.
+
+    Dependencies are constructor-injected to support offline tests and alternate
+    agent adapters. Defaults execute the repository's real ReAct agent, persist
+    through :class:`EvalStorage`, and create :class:`OllamaJudge` instances only
+    when a run enables judging.
+    """
+
     def __init__(
         self,
         storage: EvalStorage,
         adapter: ReactAdapter | None = None,
         judge_factory: Callable[[str], OllamaJudge] | None = None,
     ) -> None:
+        """Initialize the evaluator with storage and optional test doubles."""
+
         self.storage = storage
         self.adapter = adapter or ReactAdapter()
         self.judge_factory = judge_factory or OllamaJudge
@@ -35,6 +57,26 @@ class Evaluator:
         mode: str,
         progress_callback: ProgressCallback | None = None,
     ) -> tuple[str, list[EvaluationResult]]:
+        """Execute and persist an iterable of cases as one named run.
+
+        Args:
+            cases: Cases to execute; the iterable is materialized once so progress
+                totals are stable.
+            settings: Agent model, iteration bound, and judge configuration.
+            name: Human-readable run label shown in the dashboard.
+            mode: Caller-defined category such as ``batch`` or ``single``.
+            progress_callback: Optional receiver for case and nested agent events.
+
+        Returns:
+            A pair containing the generated run UUID and ordered case results.
+
+        Raises:
+            ValueError: If no cases are supplied.
+
+        Per-case exceptions become failed result records. Infrastructure failures
+        outside that boundary finalize the run as failed and are re-raised.
+        """
+
         selected_cases = list(cases)
         if not selected_cases:
             raise ValueError("At least one evaluation case is required.")

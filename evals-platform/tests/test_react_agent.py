@@ -1,14 +1,26 @@
+"""Offline behavioral tests for the canonical ReAct agent loop.
+
+An Ollama-compatible fake emits predetermined streaming chunks, allowing tests to
+verify message construction, trajectory ordering, text aggregation, recoverable
+tool errors, model failures, and bounded-loop termination without network or
+model dependencies.
+"""
+
 from __future__ import annotations
 
 from ReAct.main import run_agent
 
 
 class FakeChat:
+    """Queue-based streaming chat double that records every invocation."""
+
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = []
 
     def __call__(self, **kwargs):
+        """Return the next response as an iterator or raise a queued exception."""
+
         self.calls.append(kwargs)
         response = self.responses.pop(0)
         if isinstance(response, Exception):
@@ -17,6 +29,8 @@ class FakeChat:
 
 
 def tool_chunk(name="get_current_weather", arguments=None):
+    """Build one streamed response containing a single model tool request."""
+
     return [
         {
             "message": {
@@ -35,6 +49,8 @@ def tool_chunk(name="get_current_weather", arguments=None):
 
 
 def test_run_agent_captures_one_tool_trajectory_and_coherent_messages():
+    """A tool round trip produces coherent model/tool/model steps and messages."""
+
     client = FakeChat(
         [
             tool_chunk(),
@@ -57,6 +73,8 @@ def test_run_agent_captures_one_tool_trajectory_and_coherent_messages():
 
 
 def test_run_agent_no_tool_and_model_error():
+    """Direct answers complete in one turn and model exceptions become failures."""
+
     completed = run_agent(
         "Say hello",
         chat_client=FakeChat(
@@ -73,6 +91,8 @@ def test_run_agent_no_tool_and_model_error():
 
 
 def test_unknown_tool_is_observed_and_max_iterations_is_reported():
+    """Unknown tools are recoverable observations while loop exhaustion is terminal."""
+
     client = FakeChat(
         [
             tool_chunk("missing_tool", {"value": 1}),

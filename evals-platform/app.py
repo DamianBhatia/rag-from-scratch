@@ -1,4 +1,17 @@
-"""Streamlit dashboard for executing and reviewing ReAct agent evaluations."""
+"""Interactive Streamlit dashboard for the local ReAct evaluation platform.
+
+The application is the presentation layer over :mod:`evals_platform`. It loads
+environment-aware configuration, initializes SQLite persistence, reads the JSON
+case suite, and delegates all execution to :class:`~evals_platform.evaluator.Evaluator`.
+It never reimplements the agent loop: evaluations reach the canonical
+``ReAct.main.run_agent`` function through ``ReactAdapter``.
+
+Three tabs cover the evaluation workflow: an aggregate overview with Plotly
+quality and latency charts, a batch/ad-hoc execution form with live trajectory
+events, and a filterable result explorer with manual pass/fail review. Streamlit
+reruns this module after interactions, while durable state remains in SQLite and
+small UI-only state remains in ``st.session_state``.
+"""
 
 from __future__ import annotations
 
@@ -45,16 +58,22 @@ except Exception as exc:
 
 
 def percent(value: float | None) -> str:
+    """Format an optional ratio as a whole-number percentage for metric cards."""
+
     return "—" if value is None or pd.isna(value) else f"{value:.0%}"
 
 
 def average_metric(rows: list[dict], key: str) -> float | None:
+    """Average one flattened metric across result rows, ignoring missing values."""
+
     values = [row.get(f"metric_{key}") for row in rows]
     values = [float(value) for value in values if value is not None and not isinstance(value, bool)]
     return sum(values) / len(values) if values else None
 
 
 def render_overview() -> None:
+    """Render repository-wide run counts, quality trends, latency, and history."""
+
     runs = storage.list_runs()
     rows = storage.list_results(limit=5000)
     completed = sum(run["status"] == "completed" for run in runs)
@@ -128,6 +147,12 @@ def render_overview() -> None:
 
 
 def parse_expected_calls(raw: str) -> tuple[ExpectedToolCall, ...]:
+    """Parse ad-hoc expected tool calls from a JSON array entered in the UI.
+
+    Blank input means no expected calls. Invalid JSON or a non-array top-level
+    value raises an error that the caller displays next to the input form.
+    """
+
     if not raw.strip():
         return ()
     payload = json.loads(raw)
@@ -137,6 +162,13 @@ def parse_expected_calls(raw: str) -> tuple[ExpectedToolCall, ...]:
 
 
 def render_run_evaluations() -> None:
+    """Render batch/single-case controls and execute selected evaluations.
+
+    Progress callbacks translate evaluator and agent events into a progress bar
+    and a compact live trace. Completed results are persisted by the evaluator
+    before a summary table is shown.
+    """
+
     st.caption("Runs use the exact `run_agent()` implementation from ReAct/main.py.")
     if suite_error:
         st.error(f"The seed suite could not be loaded: {suite_error}")
@@ -269,6 +301,8 @@ def render_run_evaluations() -> None:
 
 
 def render_results_explorer() -> None:
+    """Render result filters, trajectory details, metrics, and review controls."""
+
     all_runs = storage.list_runs()
     all_rows = storage.list_results(limit=5000)
     if not all_rows:

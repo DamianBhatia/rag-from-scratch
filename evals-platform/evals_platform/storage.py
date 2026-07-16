@@ -1,4 +1,17 @@
-"""SQLite persistence and query API for evaluation history."""
+"""SQLite schema, persistence operations, and queries for evaluation history.
+
+``EvalStorage`` owns two related tables: ``eval_runs`` stores run-level settings
+and lifecycle state, while ``eval_results`` stores immutable case snapshots,
+agent trajectories, metrics, optional judge output, and mutable human reviews.
+Structured values are JSON-encoded at the database boundary and decoded back to
+plain Python values for callers.
+
+Each operation uses a short-lived connection with foreign keys, a busy timeout,
+and write-ahead logging enabled during initialization. This design is sufficient
+for a local Streamlit process and keeps transactions small; it is not intended as
+a multi-host service database. Parameter binding protects values in all queries,
+while filter clauses are selected only from fixed internal column names.
+"""
 
 from __future__ import annotations
 
@@ -13,16 +26,24 @@ from .models import EvalSettings, EvaluationResult
 
 
 def utc_now() -> str:
+    """Return an ISO-8601 timestamp in UTC for persisted lifecycle events."""
+
     return datetime.now(timezone.utc).isoformat()
 
 
 class EvalStorage:
+    """Persist, query, and manually review local evaluation runs and results."""
+
     def __init__(self, database_path: Path) -> None:
+        """Create parent directories and initialize the database schema."""
+
         self.database_path = Path(database_path)
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.initialize()
 
     def _connect(self) -> sqlite3.Connection:
+        """Open a configured SQLite connection that returns named rows."""
+
         connection = sqlite3.connect(self.database_path, timeout=10)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -30,6 +51,8 @@ class EvalStorage:
         return connection
 
     def initialize(self) -> None:
+        """Idempotently create tables and indexes required by the platform."""
+
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode = WAL")
             connection.executescript(
@@ -90,6 +113,8 @@ class EvalStorage:
         mode: str,
         settings: EvalSettings,
     ) -> None:
+        """Insert a running evaluation record with a settings snapshot."""
+
         with self._connect() as connection:
             connection.execute(
                 """
@@ -113,6 +138,8 @@ class EvalStorage:
     def finalize_run(
         self, run_id: str, status: str, error_message: str | None = None
     ) -> None:
+        """Mark a run terminal and record its completion time and optional error."""
+
         with self._connect() as connection:
             connection.execute(
                 """
@@ -124,6 +151,8 @@ class EvalStorage:
             )
 
     def append_result(self, result: EvaluationResult) -> None:
+        """Serialize and insert one independently queryable case result."""
+
         agent = result.agent_result
         created_at = result.created_at or utc_now()
         with self._connect() as connection:
@@ -160,6 +189,8 @@ class EvalStorage:
 
     @staticmethod
     def _decode(row: sqlite3.Row) -> dict[str, Any]:
+        """Decode JSON columns and expose metrics as ``metric_*`` convenience keys."""
+
         value = dict(row)
         for column in (
             "config_json",
@@ -177,6 +208,8 @@ class EvalStorage:
         return value
 
     def list_runs(self, limit: int = 200) -> list[dict[str, Any]]:
+        """Return newest runs with aggregate result and successful-case counts."""
+
         with self._connect() as connection:
             rows = connection.execute(
                 """
@@ -203,6 +236,13 @@ class EvalStorage:
         text: str | None = None,
         limit: int = 1000,
     ) -> list[dict[str, Any]]:
+        """Query newest results using optional run, status, model, tag, and text filters.
+
+        The text filter searches prompts, final answers, and case IDs. Returned
+        rows include decoded JSON fields, parent-run metadata, and flattened
+        metric keys used directly by the dashboard.
+        """
+
         clauses: list[str] = []
         parameters: list[Any] = []
         filters = {
@@ -238,6 +278,8 @@ class EvalStorage:
         return [self._decode(row) for row in rows]
 
     def get_result(self, result_id: str) -> dict[str, Any] | None:
+        """Return one fully decoded result and its run metadata, if it exists."""
+
         with self._connect() as connection:
             row = connection.execute(
                 """
@@ -250,6 +292,12 @@ class EvalStorage:
         return self._decode(row) if row else None
 
     def update_review(self, result_id: str, verdict: str, notes: str) -> None:
+        """Set a result's manual verdict, notes, and review timestamp.
+
+        Resetting the verdict to ``unreviewed`` clears the timestamp. Unsupported
+        verdicts are rejected before opening a write transaction.
+        """
+
         if verdict not in {"unreviewed", "pass", "fail"}:
             raise ValueError("Invalid manual verdict.")
         reviewed_at = None if verdict == "unreviewed" else utc_now()

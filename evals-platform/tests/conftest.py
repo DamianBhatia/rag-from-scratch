@@ -1,3 +1,11 @@
+"""Pytest path bootstrap for evaluation-platform tests.
+
+Tests import both the nested ``evals_platform`` package and the repository-level
+``ReAct`` package. Adding those two roots to ``sys.path`` keeps test invocation
+independent of the current working directory and avoids requiring an editable
+package installation.
+"""
+
 from __future__ import annotations
 
 import sys

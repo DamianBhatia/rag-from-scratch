@@ -1,4 +1,10 @@
-"""Configuration and repository-relative paths for the eval platform."""
+"""Environment-aware configuration and path discovery for the eval platform.
+
+Paths are derived from this package's location rather than the process working
+directory, allowing the dashboard and tests to start from different folders.
+``load_config`` overlays a small set of ``EVALS_*`` environment variables on
+local defaults and returns an immutable snapshot consumed by the UI.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +19,14 @@ REPOSITORY_ROOT = PLATFORM_ROOT.parent
 
 @dataclass(frozen=True)
 class AppConfig:
+    """Resolved runtime settings shared by the dashboard and evaluation services.
+
+    ``database_path`` and ``case_suite_path`` identify local durable inputs and
+    outputs. The remaining fields define default agent and optional judge model
+    behavior; individual dashboard runs may override them without mutating this
+    object.
+    """
+
     database_path: Path
     case_suite_path: Path
     default_model: str
@@ -22,11 +36,18 @@ class AppConfig:
 
 
 def _as_bool(value: str) -> bool:
+    """Interpret common affirmative environment-variable values as ``True``."""
+
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def load_config() -> AppConfig:
-    """Load defaults with optional environment overrides."""
+    """Resolve default settings and optional ``EVALS_*`` overrides.
+
+    Relative path overrides remain relative to the process working directory;
+    default paths are absolute and rooted under ``evals-platform``. Integer
+    conversion errors are intentionally surfaced early as configuration errors.
+    """
 
     return AppConfig(
         database_path=Path(

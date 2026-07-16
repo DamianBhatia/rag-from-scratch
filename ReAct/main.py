@@ -1,4 +1,18 @@
-"""A small, instrumented ReAct-style agent loop backed by Ollama."""
+"""Instrumented ReAct-style tool-calling agent backed by Ollama.
+
+The module owns the repository's canonical agent loop. During each iteration it
+sends the accumulated conversation and tool schemas to a streaming chat model,
+captures text and requested tool calls, executes those calls against a registry,
+adds observations to the conversation, and asks the model to continue. A turn
+ends when the model returns no tool calls, the model raises an error, or the
+configured iteration limit is exhausted.
+
+Every model and tool action is recorded as an :class:`AgentStep` and returned in
+an :class:`AgentRunResult`. Optional event callbacks expose the same activity to
+interactive clients while it happens. Both the chat client and tool registry are
+injectable, which keeps the control loop deterministic and offline-testable even
+though its normal runtime uses Ollama.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +49,13 @@ DEFAULT_TOOL_SCHEMAS = [
 
 @dataclass
 class AgentStep:
-    """One observable model or tool action in an agent run."""
+    """One observable model or tool action in an agent trajectory.
+
+    Model steps carry generated ``content``. Tool steps carry the selected tool,
+    parsed arguments, resulting observation, and any execution error. Latency is
+    measured per action so evaluators can separate inference time from tool time.
+    ``iteration`` identifies the model turn that produced or followed the step.
+    """
 
     kind: str
     iteration: int
@@ -51,7 +71,13 @@ class AgentStep:
 
 @dataclass
 class AgentRunResult:
-    """Structured output from one invocation of :func:`run_agent`."""
+    """Complete structured output from one invocation of :func:`run_agent`.
+
+    The record combines the final outcome with the complete model-ready message
+    history and the evaluation-friendly step trajectory. ``status`` describes
+    whether execution completed, completed after a recoverable tool error, or
+    failed. ``termination_reason`` gives the concrete stop condition.
+    """
 
     prompt: str
     model: str
@@ -69,6 +95,8 @@ class AgentRunResult:
     error_message: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Recursively convert this result and all nested steps to dictionaries."""
+
         return asdict(self)
 
 
@@ -77,7 +105,12 @@ ChatClient = Callable[..., Iterable[Any]]
 
 
 def get_current_weather(location: str) -> str:
-    """Return deterministic example weather data for a supported location."""
+    """Return deterministic example weather data for a city.
+
+    London, Tokyo, and New York have fixed observations so agent behavior can be
+    evaluated repeatably. Other locations receive an explicit unavailable-data
+    observation rather than fabricated weather.
+    """
 
     database = {
         "london": "15°C, Rainy 🌧️",
@@ -101,7 +134,20 @@ def llm_call(
     model: str = LANGUAGE_MODEL,
     chat_client: ChatClient | None = None,
 ) -> Iterable[Any]:
-    """Start a streaming model call using an injectable Ollama-compatible client."""
+    """Start a streaming model call with an Ollama-compatible client.
+
+    Args:
+        messages: Conversation history in Ollama's role/content format.
+        tools: Function schemas advertised to the model; defaults to the weather
+            tool schema when omitted.
+        model: Ollama model tag used for inference.
+        chat_client: Optional replacement for ``ollama.chat``, primarily used by
+            tests and alternate front ends.
+
+    Returns:
+        An iterable of streaming response chunks. Consumption and aggregation
+        are deliberately handled by :func:`run_agent`.
+    """
 
     client = chat_client or ollama.chat
     return client(
@@ -161,7 +207,30 @@ def run_agent(
     event_callback: EventCallback | None = None,
     chat_client: ChatClient | None = None,
 ) -> AgentRunResult:
-    """Execute one agent turn and return its complete observable trajectory."""
+    """Execute one user turn through the bounded ReAct loop.
+
+    Args:
+        prompt: Non-empty user request to append to the conversation.
+        prior_messages: Optional prior conversation for multi-turn callers.
+        model: Ollama model tag used for each reasoning turn.
+        max_iterations: Maximum number of model calls before forced termination.
+        tool_schemas: Tool definitions exposed to the model.
+        tool_registry: Mapping from tool names to executable Python callables.
+        event_callback: Best-effort receiver for token, model-complete, and
+            tool-complete events. Callback failures never affect agent behavior.
+        chat_client: Optional Ollama-compatible client for dependency injection.
+
+    Returns:
+        An :class:`AgentRunResult` containing the answer, status, message history,
+        trajectory, timing totals, and any terminal error.
+
+    Raises:
+        ValueError: If ``prompt`` is blank or ``max_iterations`` is less than one.
+
+    Tool failures are converted into observations so the model gets a chance to
+    recover. Model failures and iteration exhaustion return failed results rather
+    than raising, making partial trajectories available to the evaluation layer.
+    """
 
     if not prompt.strip():
         raise ValueError("prompt cannot be empty")
@@ -340,7 +409,13 @@ def run_agent(
 
 
 def main() -> None:
-    """Run the original interactive terminal experience."""
+    """Run a stateful terminal chat over the canonical agent loop.
+
+    Conversation messages are carried between prompts until the user enters
+    ``exit``/``quit`` or interrupts input. Streaming model text and completed tool
+    calls are rendered from events, while final status comes from the structured
+    result returned by :func:`run_agent`.
+    """
 
     conversation: list[dict[str, Any]] = []
     print("ReAct weather agent. Type 'exit' to quit.")

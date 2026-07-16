@@ -1,3 +1,11 @@
+"""Integration tests for SQLite persistence and evaluation orchestration.
+
+The tests exercise schema initialization, JSON round trips, query filtering,
+manual review updates, mixed-success batch execution, and run-level status
+aggregation. A queued fake model keeps the evaluator path deterministic while
+still passing through the real adapter and ReAct loop.
+"""
+
 from __future__ import annotations
 
 from evals_platform.evaluator import Evaluator
@@ -7,10 +15,14 @@ from evals_platform.storage import EvalStorage
 
 
 class FakeChat:
+    """Minimal queued chat double for evaluator integration tests."""
+
     def __init__(self, responses):
         self.responses = list(responses)
 
     def __call__(self, **kwargs):
+        """Yield the next fixed model response or raise its queued exception."""
+
         response = self.responses.pop(0)
         if isinstance(response, Exception):
             raise response
@@ -18,6 +30,8 @@ class FakeChat:
 
 
 def test_storage_round_trip_filter_and_manual_review(tmp_path):
+    """Stored JSON, flattened metrics, filters, and reviews round-trip correctly."""
+
     storage = EvalStorage(tmp_path / "evals.db")
     settings = EvalSettings(model="test-model", max_iterations=2)
     storage.create_run("run-1", "test", "single", settings)
@@ -53,6 +67,8 @@ def test_storage_round_trip_filter_and_manual_review(tmp_path):
 
 
 def test_evaluator_persists_mixed_batch_and_finalizes_partial(tmp_path):
+    """A mixed-success batch persists both cases and finalizes as partial."""
+
     storage = EvalStorage(tmp_path / "evals.db")
     chat = FakeChat(
         [
